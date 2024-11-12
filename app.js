@@ -1,6 +1,8 @@
 // express-server/app.js
 const express = require('express');
 const odbc = require('odbc');
+const iconv = require('iconv-lite');
+
 require('dotenv').config();
 
 const app = express();
@@ -36,8 +38,7 @@ app.get('/cbc-results', async (req, res) => {
     FROM spo..scnumeric num
     JOIN spo..scacceptance acc ON acc.smp_no = num.smp_no
     JOIN spo..v_osmp_patient pt ON acc.pt_no = pt.pt_no
-    WHERE num.slip = 'H1'
-      AND num.smp_no = ?
+    WHERE num.smp_no = ?
   `;
 
     let connection;
@@ -47,8 +48,24 @@ app.get('/cbc-results', async (req, res) => {
             console.error('데이터베이스 연결에 실패했습니다.');
             return res.status(500).json({ error: '데이터베이스 연결에 실패했습니다.' });
         }
+
+        // EUC-KR 인코딩을 설정
+        await connection.query('SET NAMES \'EUC-KR\'');
+
         const result = await connection.query(query, [smp_no]);
-        res.json({ data: result });
+
+        // EUC-KR로 인코딩된 데이터를 UTF-8로 변환
+        const utf8Result = result.map(row => {
+            return {
+                ...row,
+                text_rslt: iconv.decode(Buffer.from(row.text_rslt, 'binary'), 'EUC-KR'),
+                // 필요한 다른 필드도 변환할 수 있습니다.
+            };
+        });
+
+        // 응답의 Content-Type을 UTF-8로 설정
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.json({ data: utf8Result });
     } catch (err) {
         console.error('쿼리 실행 중 오류 발생:', err);
         return res.status(500).json({ error: '쿼리 실행 중 오류 발생: ' + err.message });
@@ -60,176 +77,91 @@ app.get('/cbc-results', async (req, res) => {
 });
 
 
-// UIMD 결과 저장 엔드포인트
-app.post('/save-uimd-result', async (req, res) => {
-    const {
-        ttext_rslt, tnumeric_rslt, tequp_cd, tequp_typ, tequp_rslt,
-        tsmp_no, texam_cd, tspc, trslt_srno
-    } = req.body;
+// 이미지 저장 엔드포인트
+app.get('/cbcImgGet', async (req, res) => {
+    const { smp_no } = req.query; // 쿼리 파라미터에서 smp_no 가져오기
 
-    // exam_stus가 F인지 확인하는 쿼리
-    const checkStatusSQL = `
-    SELECT exam_stus
-    FROM spo..scacceptance
-    WHERE smp_no = ?
-  `;
+    if (!smp_no) {
+        return res.status(400).send('smp_no is required');
+    }
 
+    let connection;
     try {
-        const connection = await connectToDatabase();
-        const result = await connection.query(checkStatusSQL, [tsmp_no]);
+        // 데이터베이스 연결
+        connection = await connectToDatabase();
 
-        const examStatus = result[0]?.exam_stus;
-        if (examStatus === 'F') {
-            return res.status(400).json({ error: 'exam_stus가 F인 경우 저장할 수 없습니다.' });
-        }
+        // SQL 쿼리 실행
+        const query = `
+            SELECT 
+                exam_ymd_unit, 
+                slip, 
+                wrk_no, 
+                (SELECT MAX(x.exam_cd) FROM spo..scimage x WHERE x.smp_no = a.smp_no) AS exam_cd, 
+                spc 
+            FROM 
+                spo..scacceptaqnce a 
+            WHERE 
+                a.smp_no = ?
+        `;
 
-        // `exam_stus`가 F가 아닌 경우 업데이트 진행
-        const updateNumericSQL = `
-      UPDATE spo..scnumeric
-      SET text_rslt = ?,
-          numeric_rslt = ?,
-          rslt_stus = 'T',
-          equp_cd = ?,
-          equp_typ = ?,
-          equp_rslt = ?,
-          lst_edtr = ?,
-          lst_edt_dt = rtrim(convert(char, getdate(), 112)) 
-                       || substring(convert(char, getdate(), 108), 1, 2) 
-                       || substring(convert(char, getdate(), 108), 4, 2)
-      FROM spo..scnumeric num
-      JOIN spo..scacceptance acc ON num.exam_ymd_unit = acc.exam_ymd_unit 
-                                 AND num.slip = acc.slip 
-                                 AND num.wrk_no = acc.wrk_no
-      WHERE num.smp_no = ?
-        AND num.exam_cd = ?
-        AND num.spc = ?
-    `;
+        const result = await connection.query(query, [smp_no]);
 
-        await connection.query(updateNumericSQL, [ttext_rslt, tnumeric_rslt, tequp_cd, tequp_typ, tequp_rslt, tequp_cd, tsmp_no, texam_cd, tspc]);
-
-        const updateAcceptanceSQL = `
-        UPDATE spo..scacceptance
-        SET rslt_srno = ?,
-            equp_cd = ?,
-            equp_typ = ?,
-            exam_stus = 'T'
-        WHERE smp_no = ?
-      `;
-
-        await connection.query(updateAcceptanceSQL, [trslt_srno, tequp_cd, tequp_typ, tsmp_no]);
-
-        res.json({ data: 'Update 성공' });
-        await connection.close();
+        // 결과 반환
+        res.json(result);
     } catch (err) {
-        return res.status(500).json({ error: '업데이트 중 오류 발생: ' + err.message });
+        console.error(err);
+        return res.status(500).send('Database error');
+    } finally {
+        // 연결 종료
+        if (connection) {
+            await connection.close();
+        }
     }
 });
 
-app.post('/updateUimdCrcData', async (req, res) => {
-    const {
-        barcode_num,
-        rbc_size,
-        rbc_chromicity,
-        rbc_anisocytosis,
-        rbc_poikilocytosis,
-        rbc_polychromasia,
-        rbc_rouleaux_formation,
-        rbc_inclusion,
-        rbc_shape1,
-        rbc_shape2,
-        rbc_etc,
-        wbc_number,
-        wbc_toxic_granulation,
-        wbc_vacuolation,
-        wbc_segmentation,
-        wbc_reactive_lymphocyte,
-        wbc_abnormal_lymphocyte,
-        wbc_other_findings,
-        wbc_etc,
-        plt_number,
-        plt_giant_platelet,
-        plt_other_findings,
-        plt_etc,
-        comment,
-        recommendation
-    } = req.body;
-    //blood_test_results -> 임시테이블명
-    const checkBarcodeSQL = `
-        SELECT COUNT(*) as count
-        FROM blood_test_results
-        WHERE barcode_num = ?
-    `;
 
+
+// UIMD 결과 저장 엔드포인트
+app.put('/save-uimd-result', async (req, res) => {
+    const { size, image_rslt, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc } = req.body;
+
+    if (!exam_ymd_unit || !slip || !wrk_no || !exam_cd || !spc) {
+        return res.status(400).send('Missing required fields');
+    }
+
+    let connection;
     try {
-        const connection = await connectToDatabase();
-        const result = await connection.query(checkBarcodeSQL, [barcode_num]);
+        // 데이터베이스 연결
+        connection = await connectToDatabase();
 
-        if (result[0].count === 0) {
-            return res.status(404).json({ error: 'Barcode number not found.' });
-        }
-
-        // Update the blood test result
-        const updateSQL = `
-            UPDATE blood_test_results
-            SET rbc_size = ?,
-                rbc_chromicity = ?,
-                rbc_anisocytosis = ?,
-                rbc_poikilocytosis = ?,
-                rbc_polychromasia = ?,
-                rbc_rouleaux_formation = ?,
-                rbc_inclusion = ?,
-                rbc_shape1 = ?,
-                rbc_shape2 = ?,
-                rbc_etc = ?,
-                wbc_number = ?,
-                wbc_toxic_granulation = ?,
-                wbc_vacuolation = ?,
-                wbc_segmentation = ?,
-                wbc_reactive_lymphocyte = ?,
-                wbc_abnormal_lymphocyte = ?,
-                wbc_other_findings = ?,
-                wbc_etc = ?,
-                plt_number = ?,
-                plt_giant_platelet = ?,
-                plt_other_findings = ?,
-                plt_etc = ?,
-                comment = ?,
-                recommendation = ?
-            WHERE barcode_num = ?
+        // SQL UPDATE 쿼리
+        const updateQuery = `
+            UPDATE spo..scimage
+            SET size = ?, 
+                image_rslt = ?, 
+                width = ?, 
+                height = ?, 
+                rslt_stus = ?
+            WHERE exam_ymd_unit = ? 
+              AND slip = ? 
+              AND wrk_no = ? 
+              AND exam_cd = ? 
+              AND spc = ?
         `;
 
-        await connection.query(updateSQL, [
-            rbc_size,
-            rbc_chromicity,
-            rbc_anisocytosis,
-            rbc_poikilocytosis,
-            rbc_polychromasia,
-            rbc_rouleaux_formation,
-            rbc_inclusion,
-            rbc_shape1,
-            rbc_shape2,
-            rbc_etc,
-            wbc_number,
-            wbc_toxic_granulation,
-            wbc_vacuolation,
-            wbc_segmentation,
-            wbc_reactive_lymphocyte,
-            wbc_abnormal_lymphocyte,
-            wbc_other_findings,
-            wbc_etc,
-            plt_number,
-            plt_giant_platelet,
-            plt_other_findings,
-            plt_etc,
-            comment,
-            recommendation,
-            barcode_num
-        ]);
+        // 쿼리 실행
+        await connection.query(updateQuery, [size, image_rslt, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc]);
 
-        res.json({ data: 'Update successful' });
-        await connection.close();
+        // 성공 메시지 반환
+        res.send('Update successful');
     } catch (err) {
-        return res.status(500).json({ error: 'Error during update: ' + err.message });
+        console.error(err);
+        res.status(500).send('Database error');
+    } finally {
+        // 연결 종료
+        if (connection) {
+            await connection.close();
+        }
     }
 });
 
