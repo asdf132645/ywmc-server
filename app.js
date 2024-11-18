@@ -77,7 +77,7 @@ app.get('/cbc-results', async (req, res) => {
 });
 
 
-// 이미지 저장 엔드포인트
+// 이미지 불러오는 엔드포인트
 app.get('/cbcImgGet', async (req, res) => {
     const { smp_no } = req.query; // 쿼리 파라미터에서 smp_no 가져오기
 
@@ -166,6 +166,44 @@ app.put('/save-uimd-result', async (req, res) => {
 });
 
 
+app.post('/save-comment', async (req, res) => {
+    const { ttext_rslt, tsmp_no } = req.body;
+
+    // exam_stus가 F인지 확인하는 쿼리
+    const checkStatusSQL = `
+    SELECT exam_stus
+    FROM spo..scacceptance
+    WHERE smp_no = ?
+  `;
+
+    try {
+        const connection = await connectToDatabase();
+        const result = await connection.query(checkStatusSQL, [tsmp_no]);
+
+        const examStatus = result[0]?.exam_stus;
+        if (examStatus === 'F') {
+            return res.status(400).json({ error: 'exam_stus가 F인 경우 저장할 수 없습니다.' });
+        }
+
+        // `exam_stus`가 F가 아닌 경우 text_rslt만 업데이트
+        const updateTextResultSQL = `
+        UPDATE spo..scnumeric
+        SET text_rslt = ?
+        FROM spo..scnumeric num
+        JOIN spo..scacceptance acc ON num.exam_ymd_unit = acc.exam_ymd_unit 
+                                   AND num.slip = acc.slip 
+                                   AND num.wrk_no = acc.wrk_no
+        WHERE num.smp_no = ?
+        `;
+
+        await connection.query(updateTextResultSQL, [ttext_rslt, tsmp_no]);
+
+        res.json({ data: 'Update 성공' });
+        await connection.close();
+    } catch (err) {
+        return res.status(500).json({ error: '업데이트 중 오류 발생: ' + err.message });
+    }
+});
 
 // 서버 시작
 app.listen(PORT, () => {
