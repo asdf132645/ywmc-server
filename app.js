@@ -122,7 +122,7 @@ app.get('/cbcImgGet', async (req, res) => {
 
 
 // UIMD 결과 저장 엔드포인트
-app.put('/save-uimd-result', async (req, res) => {
+app.post('/save-uimd-result', async (req, res) => {
     const { size, image_rslt, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc } = req.body;
 
     if (!exam_ymd_unit || !slip || !wrk_no || !exam_cd || !spc) {
@@ -198,7 +198,7 @@ app.post('/save-comment', async (req, res) => {
 
         await connection.query(updateTextResultSQL, [ttext_rslt, tsmp_no]);
 
-        res.json({ data: 'Update 성공' });
+        res.json({ code: 200 });
         await connection.close();
     } catch (err) {
         return res.status(500).json({ error: '업데이트 중 오류 발생: ' + err.message });
