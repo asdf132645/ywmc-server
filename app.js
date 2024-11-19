@@ -28,8 +28,13 @@ async function connectToDatabase() {
 }
 
 // CBC 결과 조회 엔드포인트
+// CBC 결과 조회 API
 app.get('/cbc-results', async (req, res) => {
     const { smp_no } = req.query;
+
+    if (!smp_no) {
+        return res.status(400).json({ error: 'smp_no 파라미터가 필요합니다.' });
+    }
 
     const query = `
     SELECT num.exam_ymd_unit, num.slip, num.wrk_no, num.exam_cd, num.spc, num.pt_no, 
@@ -39,39 +44,45 @@ app.get('/cbc-results', async (req, res) => {
     JOIN spo..scacceptance acc ON acc.smp_no = num.smp_no
     JOIN spo..v_osmp_patient pt ON acc.pt_no = pt.pt_no
     WHERE num.smp_no = ?
-  `;
+    `;
 
     let connection;
+
     try {
+        // Sybase 데이터베이스 연결
         connection = await connectToDatabase();
-        if (!connection) {
-            console.error('데이터베이스 연결에 실패했습니다.');
-            return res.status(500).json({ error: '데이터베이스 연결에 실패했습니다.' });
-        }
 
-        // EUC-KR 인코딩을 설정
-        await connection.query('SET NAMES \'EUC-KR\'');
-
+        // 쿼리 실행
         const result = await connection.query(query, [smp_no]);
 
-        // EUC-KR로 인코딩된 데이터를 UTF-8로 변환
+        // 데이터 변환 (EUC-KR -> UTF-8)
         const utf8Result = result.map(row => {
             return {
                 ...row,
-                text_rslt: iconv.decode(Buffer.from(row.text_rslt, 'binary'), 'EUC-KR'),
-                // 필요한 다른 필드도 변환할 수 있습니다.
+                text_rslt: row.text_rslt
+                    ? iconv.decode(Buffer.from(row.text_rslt, 'binary'), 'EUC-KR')
+                    : null,
+                pt_nm: row.pt_nm
+                    ? iconv.decode(Buffer.from(row.pt_nm, 'binary'), 'EUC-KR')
+                    : null,
             };
         });
 
-        // 응답의 Content-Type을 UTF-8로 설정
+        // UTF-8 데이터 응답
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.json({ data: utf8Result });
-    } catch (err) {
-        console.error('쿼리 실행 중 오류 발생:', err);
-        return res.status(500).json({ error: '쿼리 실행 중 오류 발생: ' + err.message });
+    } catch (error) {
+        console.error('쿼리 실행 중 오류 발생:', error.message);
+        res.status(500).json({ error: `쿼리 실행 중 오류: ${error.message}` });
     } finally {
+        // 연결 닫기
         if (connection) {
-            await connection.close();
+            try {
+                await connection.close();
+                console.log('Sybase 연결 종료');
+            } catch (closeError) {
+                console.error('연결 종료 중 오류:', closeError.message);
+            }
         }
     }
 });
