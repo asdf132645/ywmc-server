@@ -112,7 +112,7 @@ app.get('/cbcImgGet', async (req, res) => {
                 (SELECT MAX(x.exam_cd) FROM spo..scimage x WHERE x.smp_no = a.smp_no) AS exam_cd, 
                 spc 
             FROM 
-                spo..scacceptaqnce a 
+                spo..scacceptance a 
             WHERE 
                 a.smp_no = ?
         `;
@@ -161,7 +161,9 @@ app.post('/save-uimd-result', async (req, res) => {
               AND exam_cd = ? 
               AND spc = ?
         `;
-
+        // await connection.query('SET TEXTSIZE 104857600;');
+        console.log('image_rslt', image_rslt);
+        console.log('req.body', req.body)
         // 쿼리 실행
         await connection.query(updateQuery, [size, image_rslt, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc]);
 
