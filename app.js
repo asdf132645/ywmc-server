@@ -146,6 +146,7 @@ app.post('/save-uimd-result', async (req, res) => {
     try {
         // 데이터베이스 연결
         connection = await connectToDatabase();
+        const binaryImage = Buffer.from(image_rslt, 'hex'); // 헥사 문자열을 바이너리로 변환
 
         // SQL UPDATE 쿼리
         const updateQuery = `
@@ -162,10 +163,10 @@ app.post('/save-uimd-result', async (req, res) => {
               AND spc = ?
         `;
         // await connection.query('SET TEXTSIZE 104857600;');
-        console.log('image_rslt', image_rslt);
+        console.log('image_rslt', binaryImage);
         console.log('req.body', req.body)
         // 쿼리 실행
-        await connection.query(updateQuery, [size, image_rslt, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc]);
+        await connection.query(updateQuery, [size, binaryImage, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc]);
 
         // 성공 메시지 반환
         res.send('Update successful');
