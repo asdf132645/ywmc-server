@@ -14,6 +14,9 @@ const connectionString = "Driver={Adaptive Server Enterprise};Server=128.9.2.30;
 
 
 app.use(express.json());
+app.use(express.json({ limit: '300mb' })); // 요청 크기 제한 설정
+app.use(express.urlencoded({ limit: '300mb', extended: true }));
+
 
 // 연결 함수
 async function connectToDatabase() {
