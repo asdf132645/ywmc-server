@@ -2,6 +2,7 @@
 const express = require('express');
 const odbc = require('odbc');
 const iconv = require('iconv-lite');
+const bodyParser = require('body-parser');
 
 require('dotenv').config();
 
@@ -13,9 +14,8 @@ const connectionString = "Driver={Adaptive Server Enterprise};Server=128.9.2.30;
 // const connectionString = "DSN=Sybase ASE ODBC Driver;UID=Llmlis;PWD=lm1588##;Port=4100;";
 
 
-app.use(express.json());
-app.use(express.json({ limit: '1000mb' })); // JSON 요청 크기 제한 1GB로 설정
-app.use(express.urlencoded({ limit: '1000mb', extended: true })); // URL-encoded 데이터 크기 제한
+app.use(bodyParser.json({ limit: '10mb' })); // 예시로 10MB로 설정
+
 
 // 연결 함수
 async function connectToDatabase() {
