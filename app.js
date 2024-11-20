@@ -148,10 +148,11 @@ app.post('/save-uimd-result', async (req, res) => {
         // 데이터베이스 연결
         connection = await connectToDatabase();
 
-        // HEX 문자열을 Buffer로 변환
+        // HEX 문자열을 바이너리 데이터로 변환 (Buffer로 변환)
         let binaryImageResult = null;
         if (image_rslt) {
             try {
+                // image_rslt는 이미 HEX 문자열이므로, Buffer로 변환하여 바이너리 데이터로 처리
                 binaryImageResult = Buffer.from(image_rslt, 'hex');
             } catch (err) {
                 console.error('Invalid HEX string:', image_rslt);
@@ -181,7 +182,7 @@ app.post('/save-uimd-result', async (req, res) => {
         // 쿼리 실행
         await connection.query(updateQuery, [
             size,
-            binaryImageResult,
+            binaryImageResult,  // 바이너리 데이터
             width,
             height,
             rslt_stus,
@@ -204,6 +205,8 @@ app.post('/save-uimd-result', async (req, res) => {
         }
     }
 });
+
+
 
 
 
