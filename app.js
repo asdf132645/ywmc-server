@@ -138,6 +138,7 @@ app.get('/cbcImgGet', async (req, res) => {
 app.post('/save-uimd-result', async (req, res) => {
     const { size, image_rslt, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc } = req.body;
 
+    // 필수 필드 체크
     if (!exam_ymd_unit || !slip || !wrk_no || !exam_cd || !spc) {
         return res.status(400).send('Missing required fields');
     }
@@ -147,8 +148,16 @@ app.post('/save-uimd-result', async (req, res) => {
         // 데이터베이스 연결
         connection = await connectToDatabase();
 
-        // image_rslt를 Buffer로 변환 (바이너리 데이터)
-        const binaryImageResult = Buffer.from(image_rslt, 'hex');
+        // HEX 문자열을 Buffer로 변환
+        let binaryImageResult = null;
+        if (image_rslt) {
+            try {
+                binaryImageResult = Buffer.from(image_rslt, 'hex');
+            } catch (err) {
+                console.error('Invalid HEX string:', image_rslt);
+                return res.status(400).send('Invalid image data format');
+            }
+        }
 
         // SQL UPDATE 쿼리
         const updateQuery = `
@@ -165,17 +174,28 @@ app.post('/save-uimd-result', async (req, res) => {
               AND spc = ?
         `;
 
-        console.log('image_rslt', image_rslt);
-        console.log('binaryImageResult', binaryImageResult);
-        console.log('req.body', req.body);
+        console.log('Update Query Parameters:', {
+            size, binaryImageResult, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc
+        });
 
         // 쿼리 실행
-        await connection.query(updateQuery, [size, binaryImageResult, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc]);
+        await connection.query(updateQuery, [
+            size,
+            binaryImageResult,
+            width,
+            height,
+            rslt_stus,
+            exam_ymd_unit,
+            slip,
+            wrk_no,
+            exam_cd,
+            spc,
+        ]);
 
         // 성공 메시지 반환
         res.send('Update successful');
     } catch (err) {
-        console.error(err);
+        console.error('Database Error:', err);
         res.status(500).send('Database error');
     } finally {
         // 연결 종료
@@ -184,6 +204,7 @@ app.post('/save-uimd-result', async (req, res) => {
         }
     }
 });
+
 
 
 
