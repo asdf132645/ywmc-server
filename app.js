@@ -41,7 +41,7 @@ app.get('/cbc-results', async (req, res) => {
     const query = `
     SELECT num.exam_ymd_unit, num.slip, num.wrk_no, num.exam_cd, num.spc, num.pt_no, 
            num.rslt_typ, num.text_rslt, num.numeric_rslt, num.unit, num.rslt_stus, 
-           num.ref_stus, pt.pt_nm, acc.sex, acc.age
+           num.ref_stus, pt.pt_nm, acc.sex, acc.age, num.rmk
     FROM spo..scnumeric num
     JOIN spo..scacceptance acc ON acc.smp_no = num.smp_no
     JOIN spo..v_osmp_patient pt ON acc.pt_no = pt.pt_no
@@ -66,6 +66,9 @@ app.get('/cbc-results', async (req, res) => {
                     : null,
                 pt_nm: row.pt_nm
                     ? iconv.decode(Buffer.from(row.pt_nm, 'binary'), 'EUC-KR')
+                    : null,
+                rmk: row.rmk
+                    ? iconv.decode(Buffer.from(row.rmk, 'binary'), 'EUC-KR')
                     : null,
             };
         });
