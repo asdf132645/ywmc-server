@@ -38,14 +38,72 @@ app.get('/cbc-results', async (req, res) => {
         return res.status(400).json({ error: 'smp_no 파라미터가 필요합니다.' });
     }
 
+    const examCodes = `
+        '8HN110',
+        '8HGCBC-1',
+        '8HN105',
+        '8HN104',
+        '8HN101',
+        '8HN102',
+        '8HGCBC-1MCV',
+        '8HGCBC-1MCHC',
+        '8HN106',
+        '8HGCBC-1MPV',
+        '8HGCBC-1MPC',
+        '8HGCBC-1LPLT',
+        '8HGCBC-2',
+        '8HN109GNEUT%',
+        '8HN109GLYMPH%',
+        '8HN109GMONO%',
+        '8HN109GEOS%',
+        '8HN109GBASO%',
+        '8HN109GLUC%',
+        '8HN109GNEUT#',
+        '8HN109GLYMPH#',
+        '8HN109GMONO#',
+        '8HN109GEOS#',
+        '8HN109GBASO#',
+        '8HN109GLUC#',
+        '8HN109GNRBC#',
+        '8HN109G_NRBC_F',
+        '8HN109GDNI',
+        '8HN109G_ATYP_FRAG',
+        '8HN109GIG_F',
+        '8HN109G_LS',
+        '8HGCBC-1PLTCLM',
+        '8HN109GBL_F',
+        '8HGCBC-3',
+        '8HN122',
+        '8HGCBC-4',
+        '8HGCBC-5'
+    `;
+
+
     const query = `
     SELECT num.exam_ymd_unit, num.slip, num.wrk_no, num.exam_cd, num.spc, num.pt_no, 
            num.rslt_typ, num.text_rslt, num.numeric_rslt, num.unit, num.rslt_stus, 
-           num.ref_stus, pt.pt_nm, acc.sex, acc.age, num.rmk
+           num.ref_stus, pt.pt_nm, acc.sex, acc.age
     FROM spo..scnumeric num
     JOIN spo..scacceptance acc ON acc.smp_no = num.smp_no
-    JOIN spo..v_osmp_patient pt ON acc.pt_no = pt.pt_no
-    WHERE num.smp_no = ?
+    JOIN spo..v_osmp_patient pt ON pt.pt_no = num.pt_no
+    WHERE num.pt_no = (
+        SELECT MAX(pt_no)
+        FROM spo..scacceptance
+        WHERE smp_no = ?
+    )
+    AND num.exam_ymd_unit <= CONVERT(CHAR, GETDATE(), 112)
+    AND num.slip = 'H1'
+    AND num.p_exam_cd IN (${examCodes})
+    AND num.lst_edt_dt = (
+        SELECT MAX(x.lst_edt_dt)
+        FROM spo..scnumeric x
+        WHERE x.pt_no = num.pt_no
+          AND x.slip = 'H1'
+          AND x.p_exam_cd IN (${examCodes})
+          AND x.spc = num.spc
+          AND x.exam_ymd_unit <= CONVERT(CHAR, GETDATE(), 112)
+    )
+    AND num.rslt_stus = 'F';
     `;
 
     let connection;
@@ -66,9 +124,6 @@ app.get('/cbc-results', async (req, res) => {
                     : null,
                 pt_nm: row.pt_nm
                     ? iconv.decode(Buffer.from(row.pt_nm, 'binary'), 'EUC-KR')
-                    : null,
-                rmk: row.rmk
-                    ? iconv.decode(Buffer.from(row.rmk, 'binary'), 'EUC-KR')
                     : null,
             };
         });
@@ -91,6 +146,7 @@ app.get('/cbc-results', async (req, res) => {
         }
     }
 });
+
 
 
 // 이미지 불러오는 엔드포인트
@@ -117,7 +173,7 @@ app.get('/cbcImgGet', async (req, res) => {
             FROM 
                 spo..scacceptance a 
             WHERE 
-                a.smp_no = ?
+                a.smp_no = ?      
         `;
 
         const result = await connection.query(query, [smp_no]);
