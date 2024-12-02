@@ -83,7 +83,7 @@ app.get('/cbc-results', async (req, res) => {
     SELECT num.exam_ymd_unit, num.slip, num.wrk_no, num.exam_cd, num.spc, num.pt_no, 
            num.rslt_typ, num.text_rslt, num.numeric_rslt, num.unit, num.rslt_stus, 
            num.ref_stus, pt.pt_nm, acc.sex, acc.age
-    FROM spo..scnumeric num
+    FROM spo..+ num
     JOIN spo..scacceptance acc ON acc.smp_no = num.smp_no
     JOIN spo..v_osmp_patient pt ON pt.pt_no = num.pt_no
     WHERE num.pt_no = (
@@ -149,7 +149,7 @@ app.get('/cbc-results', async (req, res) => {
 
 
 
-// 이미지 불러오는 엔드포인트
+// 이미지 불러오는 엔드포인트 pbs 용 저장 시 사용
 app.get('/cbcImgGet', async (req, res) => {
     const { smp_no } = req.query; // 쿼리 파라미터에서 smp_no 가져오기
 
@@ -269,9 +269,9 @@ app.post('/save-uimd-result', async (req, res) => {
 
 
 
-
+// CBC 일 경우 저장하는 부분
 app.post('/save-comment', async (req, res) => {
-    const { ttext_rslt, tsmp_no } = req.body;
+    const { comment, tsmp_no } = req.body;
 
     // exam_stus가 F인지 확인하는 쿼리
     const checkStatusSQL = `
@@ -289,18 +289,15 @@ app.post('/save-comment', async (req, res) => {
             return res.status(400).json({ error: 'exam_stus가 F인 경우 저장할 수 없습니다.' });
         }
 
-        // `exam_stus`가 F가 아닌 경우 text_rslt만 업데이트
-        const updateTextResultSQL = `
+        // `exam_stus`가 F가 아닌 경우, `exam_cd`가 8UIMD인 경우만 comment를 업데이트
+        const updateCommentSQL = `
         UPDATE spo..scnumeric
-        SET text_rslt = ?
-        FROM spo..scnumeric num
-        JOIN spo..scacceptance acc ON num.exam_ymd_unit = acc.exam_ymd_unit 
-                                   AND num.slip = acc.slip 
-                                   AND num.wrk_no = acc.wrk_no
-        WHERE num.smp_no = ?
+        SET comment = ?
+        WHERE smp_no = ?
+          AND exam_cd = '8UIMD'
         `;
 
-        await connection.query(updateTextResultSQL, [ttext_rslt, tsmp_no]);
+        await connection.query(updateCommentSQL, [comment, tsmp_no]);
 
         res.json({ code: 200 });
         await connection.close();
