@@ -39,43 +39,11 @@ app.get('/cbc-results', async (req, res) => {
     }
 
     const examCodes = `
-        '8HN110',
         '8HGCBC-1',
-        '8HN105',
-        '8HN104',
-        '8HN101',
-        '8HN102',
-        '8HGCBC-1MCV',
-        '8HGCBC-1MCHC',
-        '8HN106',
-        '8HGCBC-1MPV',
-        '8HGCBC-1MPC',
-        '8HGCBC-1LPLT',
         '8HGCBC-2',
-        '8HN109GNEUT%',
-        '8HN109GLYMPH%',
-        '8HN109GMONO%',
-        '8HN109GEOS%',
-        '8HN109GBASO%',
-        '8HN109GLUC%',
-        '8HN109GNEUT#',
-        '8HN109GLYMPH#',
-        '8HN109GMONO#',
-        '8HN109GEOS#',
-        '8HN109GBASO#',
-        '8HN109GLUC#',
-        '8HN109GNRBC#',
-        '8HN109G_NRBC_F',
-        '8HN109GDNI',
-        '8HN109G_ATYP_FRAG',
-        '8HN109GIG_F',
-        '8HN109G_LS',
-        '8HGCBC-1PLTCLM',
-        '8HN109GBL_F',
         '8HGCBC-3',
-        '8HN122',
         '8HGCBC-4',
-        '8HGCBC-5'
+        '8HGCBC-5',
     `;
 
 
@@ -282,12 +250,12 @@ app.post('/save-comment', async (req, res) => {
 
     try {
         const connection = await connectToDatabase();
-        // const result = await connection.query(checkStatusSQL, [tsmp_no]);
+        const result = await connection.query(checkStatusSQL, [tsmp_no]);
 
-        // const examStatus = result?.exam_stus;
-        // if (examStatus === 'F') {
-        //     return res.status(400).json({ error: 'exam_stus가 F인 경우 저장할 수 없습니다.' });
-        // }
+        const examStatus = result[0]?.exam_stus;
+        if (examStatus === 'F') {
+            return res.status(400).json({ error: 'exam_stus가 F인 경우 저장할 수 없습니다.' });
+        }
 
         const updateCommentSQL = `
         UPDATE spo..scnumeric
