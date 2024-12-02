@@ -271,7 +271,7 @@ app.post('/save-uimd-result', async (req, res) => {
 
 // CBC 일 경우 저장하는 부분
 app.post('/save-comment', async (req, res) => {
-    const { comment, tsmp_no } = req.body;
+    const { text_rslt, tsmp_no } = req.body;
 
     // exam_stus가 F인지 확인하는 쿼리
     const checkStatusSQL = `
@@ -282,22 +282,21 @@ app.post('/save-comment', async (req, res) => {
 
     try {
         const connection = await connectToDatabase();
-        const result = await connection.query(checkStatusSQL, [tsmp_no]);
+        // const result = await connection.query(checkStatusSQL, [tsmp_no]);
 
-        const examStatus = result[0]?.exam_stus;
-        if (examStatus === 'F') {
-            return res.status(400).json({ error: 'exam_stus가 F인 경우 저장할 수 없습니다.' });
-        }
+        // const examStatus = result?.exam_stus;
+        // if (examStatus === 'F') {
+        //     return res.status(400).json({ error: 'exam_stus가 F인 경우 저장할 수 없습니다.' });
+        // }
 
-        // `exam_stus`가 F가 아닌 경우, `exam_cd`가 8UIMD인 경우만 comment를 업데이트
         const updateCommentSQL = `
         UPDATE spo..scnumeric
         SET comment = ?
         WHERE smp_no = ?
-          AND exam_cd = '8UIMD'
+          AND exam_cd = '8HDIGI_R_WR'
         `;
 
-        await connection.query(updateCommentSQL, [comment, tsmp_no]);
+        await connection.query(updateCommentSQL, [text_rslt, tsmp_no]);
 
         res.json({ code: 200 });
         await connection.close();
