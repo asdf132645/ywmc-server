@@ -38,20 +38,30 @@ app.get('/cbc-results', async (req, res) => {
         return res.status(400).json({ error: 'smp_no 파라미터가 필요합니다.' });
     }
 
-    const examCodes = `
+    const examCodes = [
         '8HGCBC-1',
         '8HGCBC-2',
         '8HGCBC-3',
         '8HGCBC-4',
-        '8HGCBC-5',
-    `;
+        '8HGCBC-5'
+    ];
 
+    // examCodes 배열을 SQL 쿼리에서 사용할 수 있는 문자열로 변환
+    const examCodesString = examCodes.map(code => `'${code}'`).join(', ');
 
     const query = `
-    SELECT num.exam_ymd_unit, num.slip, num.wrk_no, num.exam_cd, num.spc, num.pt_no, 
-           num.rslt_typ, num.text_rslt, num.numeric_rslt, num.unit, num.rslt_stus, 
+SELECT num.exam_ymd_unit, num.slip, num.wrk_no, num.exam_cd, num.spc, num.pt_no,
+           num.rslt_typ, num.text_rslt, num.numeric_rslt, num.unit, num.rslt_stus,
            num.ref_stus, pt.pt_nm, acc.sex, acc.age
-    FROM spo..+ num
+    FROM spo..scnumeric num
+    JOIN spo..scacceptance acc ON acc.smp_no = num.smp_no
+    JOIN spo..v_osmp_patient pt ON acc.pt_no = pt.pt_no
+    WHERE num.smp_no = ?
+UNION ALL
+ SELECT num.exam_ymd_unit, num.slip, num.wrk_no, num.exam_cd, num.spc, num.pt_no,
+           num.rslt_typ, num.text_rslt, num.numeric_rslt, num.unit, num.rslt_stus,
+           num.ref_stus, pt.pt_nm, acc.sex, acc.age
+    FROM spo..scnumeric num
     JOIN spo..scacceptance acc ON acc.smp_no = num.smp_no
     JOIN spo..v_osmp_patient pt ON pt.pt_no = num.pt_no
     WHERE num.pt_no = (
@@ -61,17 +71,17 @@ app.get('/cbc-results', async (req, res) => {
     )
     AND num.exam_ymd_unit <= CONVERT(CHAR, GETDATE(), 112)
     AND num.slip = 'H1'
-    AND num.p_exam_cd IN (${examCodes})
+    AND num.p_exam_cd IN (${examCodesString})
     AND num.lst_edt_dt = (
         SELECT MAX(x.lst_edt_dt)
         FROM spo..scnumeric x
         WHERE x.pt_no = num.pt_no
           AND x.slip = 'H1'
-          AND x.p_exam_cd IN (${examCodes})
+          AND x.p_exam_cd IN (${examCodesString})
           AND x.spc = num.spc
           AND x.exam_ymd_unit <= CONVERT(CHAR, GETDATE(), 112)
     )
-    AND num.rslt_stus = 'F';
+    AND num.rslt_stus = 'F'
     `;
 
     let connection;
@@ -81,24 +91,21 @@ app.get('/cbc-results', async (req, res) => {
         connection = await connectToDatabase();
 
         // 쿼리 실행
-        const result = await connection.query(query, [smp_no]);
+        const result = await connection.query(query, [smp_no, smp_no]);
+        console.log('smp_no', smp_no);
 
         // 데이터 변환 (EUC-KR -> UTF-8)
-        const utf8Result = result.map(row => {
-            return {
-                ...row,
-                text_rslt: row.text_rslt
-                    ? iconv.decode(Buffer.from(row.text_rslt, 'binary'), 'EUC-KR')
-                    : null,
-                pt_nm: row.pt_nm
-                    ? iconv.decode(Buffer.from(row.pt_nm, 'binary'), 'EUC-KR')
-                    : null,
-            };
-        });
+        const utf8Result = result.map(row => ({
+            ...row,
+            text_rslt: row.text_rslt ? iconv.decode(Buffer.from(row.text_rslt, 'binary'), 'EUC-KR') : null,
+            pt_nm: row.pt_nm ? iconv.decode(Buffer.from(row.pt_nm, 'binary'), 'EUC-KR') : null,
+        }));
 
         // UTF-8 데이터 응답
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.json({ data: utf8Result });
+        console.log('result', utf8Result);
+
     } catch (error) {
         console.error('쿼리 실행 중 오류 발생:', error.message);
         res.status(500).json({ error: `쿼리 실행 중 오류: ${error.message}` });
@@ -114,6 +121,8 @@ app.get('/cbc-results', async (req, res) => {
         }
     }
 });
+
+
 
 
 
@@ -145,7 +154,6 @@ app.get('/cbcImgGet', async (req, res) => {
         `;
 
         const result = await connection.query(query, [smp_no]);
-
         // 결과 반환
         res.json(result);
     } catch (err) {
@@ -241,37 +249,64 @@ app.post('/save-uimd-result', async (req, res) => {
 app.post('/save-comment', async (req, res) => {
     const { text_rslt, tsmp_no } = req.body;
 
-    // exam_stus가 F인지 확인하는 쿼리
+    if (!text_rslt || !tsmp_no) {
+        return res.status(400).json({ error: 'text_rslt와 tsmp_no는 필수입니다.' });
+    }
+
+    // SQL 쿼리
     const checkStatusSQL = `
-    SELECT exam_stus
-    FROM spo..scacceptance
-    WHERE smp_no = ?
-  `;
+        SELECT exam_stus
+        FROM spo..scacceptance
+        WHERE smp_no = ?
+    `;
 
+    const updateCommentSQL = `
+        UPDATE spo..scnumeric
+        SET text_rslt = ?
+        WHERE smp_no = ?
+          AND exam_cd = '8HDIGI_R_WR'
+    `;
+
+    let connection;
     try {
-        const connection = await connectToDatabase();
-        const result = await connection.query(checkStatusSQL, [tsmp_no]);
+        connection = await connectToDatabase(); // 데이터베이스 연결
+        await connection.beginTransaction(); // 트랜잭션 시작
 
+        // `exam_stus` 상태 확인
+        const result = await connection.query(checkStatusSQL, [tsmp_no]);
         const examStatus = result[0]?.exam_stus;
+
+        console.log('examStatus:', examStatus);
+
         if (examStatus === 'F') {
             return res.status(400).json({ error: 'exam_stus가 F인 경우 저장할 수 없습니다.' });
         }
 
-        const updateCommentSQL = `
-        UPDATE spo..scnumeric
-        SET comment = ?
-        WHERE smp_no = ?
-          AND exam_cd = '8HDIGI_R_WR'
-        `;
-
+        // 코멘트 업데이트
+        console.log('updateCommentSQL:', updateCommentSQL);
         await connection.query(updateCommentSQL, [text_rslt, tsmp_no]);
 
-        res.json({ code: 200 });
-        await connection.close();
+        await connection.commit(); // 트랜잭션 커밋
+        res.json({ code: 200, message: '코멘트가 성공적으로 저장되었습니다.' });
     } catch (err) {
-        return res.status(500).json({ error: '업데이트 중 오류 발생: ' + err.message });
+        if (connection) {
+            await connection.rollback(); // 오류 발생 시 트랜잭션 롤백
+        }
+        console.error('쿼리 실행 중 오류:', err.message);
+        res.status(500).json({ error: '업데이트 중 오류 발생: ' + err.message });
+    } finally {
+        // 연결 종료
+        if (connection) {
+            try {
+                await connection.close();
+                console.log('Sybase 연결 종료');
+            } catch (closeErr) {
+                console.error('연결 종료 중 오류:', closeErr.message);
+            }
+        }
     }
 });
+
 
 // 서버 시작
 app.listen(PORT, () => {
