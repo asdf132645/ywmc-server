@@ -10,7 +10,8 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // ODBC 연결 문자열 설정
-const connectionString = "Driver={Adaptive Server Enterprise};Server=128.9.2.30;uid=Llmlis;pwd=lm1588##;Port=6000;";
+// const connectionString = "Driver={Adaptive Server Enterprise};Server=128.9.2.30;uid=Llmlis;pwd=lm1588##;Port=6000;"; 개발 서버
+const connectionString = "Driver={Adaptive Server Enterprise};Server=128.9.1.21;uid=Llmlis;pwd=lm1588##;Port=4100;";
 // const connectionString = "DSN=Sybase ASE ODBC Driver;UID=Llmlis;PWD=lm1588##;Port=4100;";
 
 
