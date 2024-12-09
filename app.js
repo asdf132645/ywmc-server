@@ -172,7 +172,7 @@ app.get('/cbcImgGet', async (req, res) => {
 
 // UIMD 결과 저장 엔드포인트
 app.post('/save-uimd-result', async (req, res) => {
-    const { size, image_rslt, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc } = req.body;
+    const { size, image_rslt, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc } = req.body;
 
     // 필수 필드 체크
     if (!exam_ymd_unit || !slip || !wrk_no || !exam_cd || !spc) {
@@ -201,8 +201,6 @@ app.post('/save-uimd-result', async (req, res) => {
             UPDATE spo..scimage
             SET size = ?, 
                 image_rslt = ?, 
-                width = ?, 
-                height = ?, 
                 rslt_stus = ?
             WHERE exam_ymd_unit = ? 
               AND slip = ? 
@@ -212,15 +210,13 @@ app.post('/save-uimd-result', async (req, res) => {
         `;
 
         console.log('Update Query Parameters:', {
-            size, binaryImageResult, width, height, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc
+            size, binaryImageResult, rslt_stus, exam_ymd_unit, slip, wrk_no, exam_cd, spc
         });
 
         // 쿼리 실행
         await connection.query(updateQuery, [
             size,
             binaryImageResult,  // 바이너리 데이터
-            width,
-            height,
             rslt_stus,
             exam_ymd_unit,
             slip,
